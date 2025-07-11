@@ -17,6 +17,19 @@ import loop_timer as lt
 import yolo_networking as yn
 from stretch_body import robot_params
 from stretch_body import hello_utils as hu
+import subprocess
+import os
+
+# updated
+def home_robot_once():
+    try:
+        print("Homing Stretch robot...")
+        homing_script = os.path.expanduser("~/.local/bin/stretch_robot_home.py")
+        subprocess.run(["python3", homing_script], check=True)
+        print("✅ Robot homed successfully.\n")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to home the robot: {e}")
+        exit(1)
 
 def draw_origin(image, camera_info, origin_xyz, color):
     radius = 6
@@ -769,11 +782,9 @@ def main(use_yolo, use_remote_computer, exposure):
         robot.stop()
         pipeline.stop()
 
-
-
-
 if __name__ == '__main__':
-
+    # updated
+    home_robot_once()
     
     parser = argparse.ArgumentParser(
         prog='Stretch 3 Visual Servoing Demo',

@@ -62,6 +62,7 @@ def main(use_remote_computer):
             loop_timer.start_of_iteration()
 
             d405_output = d405_socket.recv_pyobj()
+            # print("Received D405 image data. Calling YoloServoPerception.apply()")
             color_image = d405_output['color_image']
             depth_image = d405_output['depth_image']
             depth_camera_info = d405_output['depth_camera_info']

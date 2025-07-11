@@ -66,10 +66,11 @@ class YoloServoPerception():
             cv2.imshow('Received RGB Image', color_image)
             cv2.imshow('Received Depth Image', depth_image)
 
-        conf = 0.1 #0.25 is the default threshold
+        conf = 0.10 #0.25 is the default threshold
         yolo_results = self.model.predict(color_image, conf=conf)[0]
         
         names = yolo_results.names
+        # print("All classes: ", names)
 
         yolo_output = []
         best_ball = None
@@ -80,8 +81,13 @@ class YoloServoPerception():
                 masks = yolo_results.masks.xy
             for i, box in enumerate(boxes):
                 class_name = names[box.cls[0]]
-                if class_name in ['apple', 'sports ball']:
-
+                # if class_name in ['apple', 'sports ball']:
+                # if class_name != "":
+                # if class_name == "keyboard":
+                # if class_name == "cup":
+                # if class_name == "bottle":
+                # if class_name == "mouse":
+                if "remote" in class_name:
                     box_min_x, box_min_y, box_max_x, box_max_y = box.xyxy[0]
                     box_width_x = box_max_x - box_min_x
                     box_width_y = box_max_y - box_min_y
