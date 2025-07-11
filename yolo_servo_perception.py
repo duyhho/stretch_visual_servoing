@@ -81,6 +81,7 @@ class YoloServoPerception():
                 masks = yolo_results.masks.xy
             for i, box in enumerate(boxes):
                 class_name = names[box.cls[0]]
+                # add/remove object in the list to change the objects to detect
                 if class_name in ['apple', 'sports ball']:
                     box_min_x, box_min_y, box_max_x, box_max_y = box.xyxy[0]
                     box_width_x = box_max_x - box_min_x
