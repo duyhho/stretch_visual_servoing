@@ -8,6 +8,104 @@ from yaml.loader import SafeLoader
 import d405_helpers_without_pyrealsense as dh
 from copy import deepcopy
 
+# Add this near the top of the class
+OBJECT_THICKNESS_DB = {
+    # Thin objects (0.5-2cm)
+    'book': 2.0, 'laptop': 2.5, 'remote': 1.5, 'cell phone': 1.0,
+    'tablet': 1.0, 'keyboard': 3.0, 'mouse': 4.0, 'wallet': 2.0,
+    
+    # Medium objects (2-5cm) 
+    'cup': 8.0, 'mug': 10.0, 'bottle': 6.0, 'can': 6.5,
+    'box': 15.0, 'container': 12.0,
+    
+    # Variable/calculated objects
+    'apple': None, 'orange': None, 'sports ball': None,  # Use sphere logic
+}
+
+def calculate_lookup_grasp_depth(class_name, width_m, height_m):
+    width_cm = width_m * 100
+    height_cm = height_m * 100
+    
+    # Try lookup first
+    if class_name in OBJECT_THICKNESS_DB:
+        thickness = OBJECT_THICKNESS_DB[class_name]
+        if thickness is not None:
+            return thickness / 2.0 / 100.0  # Convert to meters
+    
+    # Fallback to smart heuristics
+    aspect_ratio = width_cm / height_cm
+    
+    if aspect_ratio > 4.0:  # Very wide/flat (like remote lying down)
+        grasp_depth = 1.5  # Assume thin
+    elif aspect_ratio < 0.25:  # Very tall/thin (like bottle standing)
+        grasp_depth = width_cm / 2.0  # Use width as diameter
+    elif min(width_cm, height_cm) < 3.0:  # One dimension very small
+        grasp_depth = 1.0  # Assume thin object
+    else:  # Roughly square/round
+        grasp_depth = min(width_cm, height_cm) / 2.5  # Conservative
+    
+    # Safety bounds
+    grasp_depth = max(0.5, min(grasp_depth, 5.0))
+    return grasp_depth / 100.0
+
+"""
+METHOD 2: Learning-Based (Recommended for 80 objects)
+Use size-based estimation with machine learning thinking:
+
+def estimate_grasp_depth_adaptive(class_name, width_m, height_m, area_m2):
+    width_cm = width_m * 100
+    height_cm = height_m * 100
+    area_cm2 = area_m2 * 10000
+    
+    # Calculate object "bulk" - helps distinguish thin vs thick
+    perimeter_cm = 2 * (width_cm + height_cm)
+    bulk_ratio = area_cm2 / (perimeter_cm ** 2)  # Roundness measure
+    
+    aspect_ratio = max(width_cm, height_cm) / min(width_cm, height_cm)
+    
+    # Adaptive rules based on geometry
+    if aspect_ratio > 3.0:  # Very elongated (remote, book, etc.)
+        base_thickness = 1.5  # Start with thin assumption
+        size_multiplier = min(2.0, area_cm2 / 50.0)  # Bigger = thicker
+        grasp_depth = base_thickness * size_multiplier
+        
+    elif bulk_ratio > 0.08:  # Round/square objects (balls, cups, boxes)
+        grasp_depth = min(width_cm, height_cm) / 2.2  # Nearly sphere-like
+        
+    else:  # Irregular shapes
+        # Use conservative estimate based on smaller dimension
+        grasp_depth = min(width_cm, height_cm) / 3.0
+    
+    # Apply size-based adjustments
+    if area_cm2 < 10:  # Very small objects (coins, keys)
+        grasp_depth = min(grasp_depth, 0.5)
+    elif area_cm2 > 400:  # Large objects (big boxes)
+        grasp_depth = min(grasp_depth, 8.0)
+    
+    # Final safety bounds
+    return max(0.3, min(grasp_depth, 6.0)) / 100.0
+"""
+
+"""
+METHOD 3: Direct Point Cloud Analysis (The Immediate Next Step)
+
+
+"""
+
+"""
+METHOD 4: Better: Machine Learning for Grasp Pose Detection
+
+
+"""
+
+"""
+METHOD 5: Best: Full 3D Object Reconstruction
+
+
+"""
+
+
+
 def draw_text(image, origin, text_lines):
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_size = 0.5
@@ -81,8 +179,15 @@ class YoloServoPerception():
                 masks = yolo_results.masks.xy
             for i, box in enumerate(boxes):
                 class_name = names[box.cls[0]]
-                # add/remove object in the list to change the objects to detect
-                if class_name in ['apple', 'sports ball']:
+                # To change the object to search, change obj name in the list below
+                # if class_name in ['apple', 'sports ball']:
+                target_objects = ['apple', 'sports ball', 'orange', 'banana', 
+                                'book', 'laptop', 'remote', 'cell phone', 'tablet',
+                                'cup', 'mug', 'bottle', 'can', 'wine glass',
+                                'mouse', 'keyboard', 'scissors', 'teddy bear',
+                                'hair drier', 'toothbrush']
+                
+                if class_name in target_objects:
                     box_min_x, box_min_y, box_max_x, box_max_y = box.xyxy[0]
                     box_width_x = box_max_x - box_min_x
                     box_width_y = box_max_y - box_min_y
@@ -155,7 +260,11 @@ class YoloServoPerception():
                     right_side_xyz = dh.pixel_to_3d(right_side_pix, estimated_z_m, self.camera_info)
                     width_m = np.linalg.norm(right_side_xyz - left_side_xyz)
 
-                    grasp_depth = width_m / 2.0
+                    # grasp_depth = width_m / 2.0
+                    # Replace the old sphere logic with smart lookup
+                    box_height_m = box_width_y / width_pix * width_m  # Calculate height in meters
+                    grasp_depth = calculate_lookup_grasp_depth(class_name, width_m, box_height_m)
+                    
                     grasp_center_xyz = center_xyz + (grasp_depth * center_ray)
 
                     if (best_ball is None) or (best_ball['max_box_side_pix'] < max_box_side_pix): 

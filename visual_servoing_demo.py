@@ -122,7 +122,7 @@ lost_ball_fingertips_too_close = 0.038
 
 successful_grasp_effort = -14.0
 successful_grasp_max_fingertip_distance = 0.085 #0.075 m
-successful_grasp_min_fingertip_distance = 0.05 #0.03 m
+successful_grasp_min_fingertip_distance = 0.02 #from 0.05 to 0.02 to pick up thin object.
 
 # Approximation based on just_touching key statefrom gripper characterization
 default_between_fingertips = np.array([0.01, 0.035, 0.17])
