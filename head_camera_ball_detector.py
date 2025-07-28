@@ -1,3 +1,9 @@
+"""
+Execute belows to get camera streaming:
+ros2 launch stretch_core stretch_driver.launch.py
+ros2 launch stretch_core d435i_low_resolution.launch.py
+
+"""
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo
