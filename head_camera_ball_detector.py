@@ -33,6 +33,7 @@ class HeadCameraBallDetector(Node):
             CameraInfo, '/camera/color/camera_info', self.info_callback, 10)
 
         self.sub_image = message_filters.Subscriber(self, Image, '/camera/color/image_raw')
+        # self.sub_depth = message_filters.Subscriber(self, Image, '/camera/depth/image_rect_raw')
         self.sub_depth = message_filters.Subscriber(self, Image, '/camera/aligned_depth_to_color/image_raw')
         
         self.ts = message_filters.ApproximateTimeSynchronizer(
@@ -53,6 +54,13 @@ class HeadCameraBallDetector(Node):
 
         img = self.bridge.imgmsg_to_cv2(image_msg, 'bgr8')
         depth_img = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
+
+        # ######################################################################
+        # ## ADD THESE TWO LINES TO ROTATE THE IMAGES ##
+        # ######################################################################
+        img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+        depth_img = cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE)
+        # ######################################################################
 
         results = self.model(img, verbose=False)[0]
 
