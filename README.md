@@ -17,15 +17,37 @@ img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
 depth_img = cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE)
 ```
 
+## IMPLEMENTED
+
+Add depth camera open cv window - completed, the depth value is pretty accurate.
+
+what small camera attached to the head camera does? - This smaller camera is an Arducam 1MP RGB camera with a wide-angle lens and global shutter. It is primarily useful when operating the robot remotely, as we will see in an upcoming Web Interface Demo tutorial.
+
+
+Understand the Coordinate System: The (x, y, z) values displayed on the ball are its position in meters. Investigate how these coordinates relate to the robot's movement. - I changed the code to make the head camera as the origin. These coordinates are relative to the robot's base_link (the center of the robot at the floor), not the camera. We know this because the script transforms the point to the base_link frame.The camera is lotated 90 degrees counter clockwise by default.
+
 ## Next Steps
 
-Understand the Coordinate System: The (x, y, z) values displayed on the ball are its position in meters. Investigate how these coordinates relate to the robot's movement.
-
-Note: These coordinates are relative to the robot's base_link (the center of the robot at the floor), not the camera. We know this because the script transforms the point to the base_link frame.
+Improve resolution
 
 Improve Performance: To reduce lag, especially over Wi-Fi, research how to use compressed image topics (e.g., subscribing to /camera/color/image_raw/compressed) instead of the raw image stream.
 
 
+## OPTICAL TERMS
+cx_k, cy_k - The Optical Center
+
+fx, fy - The Focal Length
+
+### CameraInfo.K
+msg.k[0] is fx
+
+msg.k[2] is cx_k
+
+msg.k[4] is fy
+
+msg.k[5] is cy_k
+
+### CameraInfo.P - similar to CameraInfo.K with stream version
 
 
 
