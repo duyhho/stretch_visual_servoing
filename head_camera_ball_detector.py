@@ -216,14 +216,35 @@ class HeadCameraBallDetector(Node):
             # Draw the bounding box
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-            # Create text using the NEW intuitive coordinates
-            text_cam = f"Cam: ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m"
-            # Display it on the color image
-            cv2.putText(img, text_cam, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+            # # Create text using the NEW intuitive coordinates
+            # text_cam = f"Cam: ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m"
+            # # Display it on the color image
+            # cv2.putText(img, text_cam, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
 
-            # Create and draw the depth text on the depth window
-            depth_text = f"Depth: {depth_mm:.0f} mm"
-            cv2.putText(depth_colormap, depth_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            # Define the text lines to display, now in centimeters
+            text_lines = [
+                f"X (right): {x_intuitive * 100:.1f} cm",
+                f"Y (up):    {y_intuitive * 100:.1f} cm",
+                f"Z (fwd):   {z_intuitive * 100:.1f} cm",
+            ]
+            
+            # Call the helper function to draw the text box
+            self.draw_labeled_text_box(
+                img=img, 
+                text_lines=text_lines, 
+                box=(x1, y1, x2, y2),  # Pass the whole box
+                text_color=(0, 255, 0)
+            )
+
+            # Create and draw the depth text, now in centimeters
+            depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
+            self.draw_labeled_text_box(
+                img=depth_colormap,
+                text_lines=depth_text_lines,
+                box=(x1, y1, x2, y2),  # Pass the whole box here too
+                text_color=(255, 255, 255),
+                font_scale=0.5
+            )
 
             # Draw the mask outline for visualization
             cv2.polylines(img, [best_ball['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
@@ -266,6 +287,44 @@ class HeadCameraBallDetector(Node):
         # Display the colorized depth image in a new window
         cv2.imshow("Depth Camera", depth_colormap)
         cv2.waitKey(1)
+
+    def draw_labeled_text_box(self, img, text_lines, box, font_scale=0.5, font_thickness=2, text_color=(255, 0, 255)):
+        """
+        Draws a text box that automatically repositions horizontally to stay on screen.
+        """
+        # Unpack box coordinates and get image dimensions
+        x1, y1, x2, _ = box
+        img_width = img.shape[1]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        # --- Calculate required width of the text box ---
+        max_width = 0
+        for line in text_lines:
+            (line_width, _), _ = cv2.getTextSize(line, font, font_scale, font_thickness)
+            if line_width > max_width:
+                max_width = line_width
+
+        # --- Decide horizontal position (x-coordinate) ---
+        # If drawing at x1 would push the text off-screen...
+        if x1 + max_width > img_width:
+            # ...anchor the text to the right side of the box (x2) instead.
+            start_x = x2 - max_width
+        else:
+            # ...otherwise, anchor it to the left side (x1) as usual.
+            start_x = x1
+        
+        # Vertical position is always 10px above the box's top edge
+        start_y = y1 - 10
+
+        # --- Draw the text lines (same logic as before) ---
+        (_, text_height), _ = cv2.getTextSize(text_lines[0], font, font_scale, font_thickness)
+        line_spacing = text_height + 8
+        for i, line in enumerate(reversed(text_lines)):
+            y = start_y - (i * line_spacing)
+            # Draw a black outline for visibility
+            cv2.putText(img, line, (start_x, y), font, font_scale, (0, 0, 0), font_thickness + 2)
+            # Draw the colored text on top
+            cv2.putText(img, line, (start_x, y), font, font_scale, text_color, font_thickness)
 
 def main(args=None):
     rclpy.init(args=args)
