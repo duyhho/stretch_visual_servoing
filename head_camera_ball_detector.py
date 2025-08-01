@@ -13,9 +13,6 @@ ros2 topic echo "topic_end_point" (get actual data)
 ros2 topic echo /camera/color/image_raw/compressed
 
 
-
-
-
 """
 import rclpy
 from rclpy.node import Node
@@ -27,14 +24,14 @@ import cv2
 import numpy as np
 import tf2_ros
 import tf2_geometry_msgs
-
 import message_filters
 
 class HeadCameraBallDetector(Node):
     def __init__(self):
         super().__init__('head_camera_ball_detector')
+        self.USE_BASE_FRAME = False
 
-        # 1. Create resizable windows
+        # Create resizable windows
         cv2.namedWindow("YOLO Ball Detection", cv2.WINDOW_NORMAL)
         cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
 
@@ -43,31 +40,27 @@ class HeadCameraBallDetector(Node):
         # APPLIED CHANGE: Using the segmentation model for more precise detection
         self.model = YOLO('yolov8n-seg.pt')
 
-        self.tf_buffer = tf2_ros.Buffer()
-        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+        if self.USE_BASE_FRAME:
+            self.tf_buffer = tf2_ros.Buffer()
+            self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         
         self.camera_info = None
         self.info_sub = self.create_subscription(
             CameraInfo, '/camera/color/camera_info', self.info_callback, 10)
-
         self.sub_image = message_filters.Subscriber(self, Image, '/camera/color/image_raw')
-        # self.sub_depth = message_filters.Subscriber(self, Image, '/camera/depth/image_rect_raw')
         self.sub_depth = message_filters.Subscriber(self, Image, '/camera/aligned_depth_to_color/image_raw')
+        
+        # TODO: HOW TO USE OTHER TOPICS LIKE COMPRESSED IMAGE 
+        # self.sub_depth = message_filters.Subscriber(self, Image, '/camera/depth/image_rect_raw')
         
         self.ts = message_filters.ApproximateTimeSynchronizer(
             [self.sub_image, self.sub_depth], 10, 0.1)
         self.ts.registerCallback(self.image_depth_callback)
 
+
         self.get_logger().info("Ball detector node initialized and waiting for messages.")
 
     def info_callback(self, msg):
-        # self.get_logger().info("--- CAMERA INFO RECEIVED ---")
-        # self.get_logger().info(str(msg)) # <--- ADD THIS LINE
-        
-        # self.camera_info = msg
-        # self.destroy_subscription(self.info_sub)
-        # self.get_logger().info("Received camera info and unsubscribed.")
-
         self.get_logger().info("Original Camera Info Received.")
 
         # --- Create a corrected CameraInfo for the rotated image ---
@@ -113,23 +106,14 @@ class HeadCameraBallDetector(Node):
         img = self.bridge.imgmsg_to_cv2(image_msg, 'bgr8')
         depth_img = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
 
-        # ######################################################################
-        # ## ADD THESE TWO LINES TO ROTATE THE IMAGES ##
-        # ######################################################################
+        # ROTATE IMAGE (orignally 90 degrees rotated counter clockwise)
         img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
         depth_img = cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE)
-        # ######################################################################
 
-        # ====================================================================
-        # ## PASTE THIS NEW BLOCK HERE to display the depth window ##
-        # ====================================================================
         # Normalize the 16-bit depth data to an 8-bit scale (0-255)
         depth_normalized = cv2.normalize(depth_img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-        
         # Apply a colormap to make it colorful and easier to see
         depth_colormap = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_JET)
-        
-        # ====================================================================
 
         results = self.model(img, verbose=False)[0]
 
@@ -188,13 +172,25 @@ class HeadCameraBallDetector(Node):
                 # We draw the image at the end, so just return to skip processing this frame
                 return
 
-            # --- The rest of the logic is the same, using the new robust depth ---
+            # ##############################################################
+            # ## 2D to 3D Conversion ##
+            # ##############################################################
+            # This calculation converts the 2D pixel coordinate of the object's
+            # center into a 3D coordinate (X, Y, Z) from the camera's perspective.
+            # It's based on the geometry of similar triangles.
+
+            # The core formula is: X / depth_m = (cx - cx_k) / fx
+            # - X: How far the object is to the left or right of the camera's center, in meters.
+            # - depth_m: How far the object is straight ahead from the camera, in meters.
+            # - (cx - cx_k): The horizontal distance in pixels from the optical center to the object's 2D center.
+            # - fx: The camera's horizontal focal length in pixel units.
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
             fx, fy = self.camera_info.k[0], self.camera_info.k[4]
             cx_k, cy_k = self.camera_info.k[2], self.camera_info.k[5]
             X = (cx - cx_k) * depth_m / fx
             Y = (cy - cy_k) * depth_m / fy
             Z = depth_m
+
 
             # --- Remap coordinates to be more intuitive ---
             # The camera's native optical frame has +Y pointing down.
@@ -215,73 +211,91 @@ class HeadCameraBallDetector(Node):
 
             # Draw the bounding box
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            # # Create text using the NEW intuitive coordinates
-            # text_cam = f"Cam: ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m"
-            # # Display it on the color image
-            # cv2.putText(img, text_cam, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
-
-            # Define the text lines to display, now in centimeters
-            text_lines = [
-                f"X (right): {x_intuitive * 100:.1f} cm",
-                f"Y (up):    {y_intuitive * 100:.1f} cm",
-                f"Z (fwd):   {z_intuitive * 100:.1f} cm",
-            ]
-            
-            # Call the helper function to draw the text box
-            self.draw_labeled_text_box(
-                img=img, 
-                text_lines=text_lines, 
-                box=(x1, y1, x2, y2),  # Pass the whole box
-                text_color=(0, 255, 0)
-            )
-
-            # Create and draw the depth text, now in centimeters
-            depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
-            self.draw_labeled_text_box(
-                img=depth_colormap,
-                text_lines=depth_text_lines,
-                box=(x1, y1, x2, y2),  # Pass the whole box here too
-                text_color=(255, 255, 255),
-                font_scale=0.5
-            )
-
             # Draw the mask outline for visualization
             cv2.polylines(img, [best_ball['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
 
-            # Update the logger to show the NEW intuitive coordinates
-            self.get_logger().info(f"Ball position (intuitive cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
+            if self.USE_BASE_FRAME:
+                # --- Get and Display Coordinates from the BASE ---
+                try:
+                    pt_base = self.tf_buffer.transform(pt_cam, 'base_link', timeout=rclpy.duration.Duration(seconds=0.1))
+                    px, py, pz = pt_base.point.x, pt_base.point.y, pt_base.point.z
+                    
+                    text_lines = [f"X (fwd):  {px * 100:.1f} cm", f"Y (left): {py * 100:.1f} cm", f"Z (up):   {pz * 100:.1f} cm"]
+                    self.draw_labeled_text_box(img, text_lines, (x1, y1, x2, y2), text_color=(0, 0, 255))
+                    self.get_logger().info(f"Ball (base): ({px:.2f}, {py:.2f}, {pz:.2f}) m | Depth: {depth_m:.2f} m")
+                except Exception as e:
+                    self.get_logger().warn(f"TF transform to 'base_link' failed: {e}")
+            else:
+                # --- Get and Display Coordinates from the CAMERA ---
+                text_lines = [f"X (right): {x_intuitive * 100:.1f} cm", f"Y (up):    {y_intuitive * 100:.1f} cm", f"Z (fwd):   {z_intuitive * 100:.1f} cm"]
+                self.draw_labeled_text_box(img, text_lines, (x1, y1, x2, y2), text_color=(0, 255, 0))
+                self.get_logger().info(f"Ball (cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
 
-            # GET X, Y, and Z from the base
-            # try:
-            #     pt_base = self.tf_buffer.transform(pt_cam, 'base_link', timeout=rclpy.duration.Duration(seconds=1.0))
-            #     px, py, pz = pt_base.point.x, pt_base.point.y, pt_base.point.z
+            # --- Draw the depth text (common to both modes) ---
+            depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
+            self.draw_labeled_text_box(depth_colormap, depth_text_lines, (x1, y1, x2, y2), text_color=(255, 255, 255))
 
-            #     # Text for the base_link coordinates
-            #     text = f"({px:.2f}, {py:.2f}, {pz:.2f}) m"
-            #     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            #     cv2.putText(img, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
 
-            #     # --- ADD THIS to show camera coordinates ---
-            #     # Create text for the camera's perspective
-            #     text_cam = f"Cam: ({X:.2f}, {Y:.2f}, {Z:.2f}) m"
-            #     # Display it slightly below the first text in a different color (cyan)
-            #     cv2.putText(img, text_cam, (x1, y1 + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
-            #     # --- End of new code ---
+            # # Define the text lines to display, now in centimeters
+            # text_lines = [
+            #     f"X (right): {x_intuitive * 100:.1f} cm",
+            #     f"Y (up):    {y_intuitive * 100:.1f} cm",
+            #     f"Z (fwd):   {z_intuitive * 100:.1f} cm",
+            # ]
+            
+            # # Call the helper function to draw the text box
+            # self.draw_labeled_text_box(
+            #     img=img, 
+            #     text_lines=text_lines, 
+            #     box=(x1, y1, x2, y2),  # Pass the whole box
+            #     text_color=(0, 255, 0)
+            # )
 
-            #     # --- Draw Depth Value on Depth Window ---
-            #     # Create the text string with the depth in millimeters
-            #     depth_text = f"Depth: {depth_mm:.0f} mm"
+            # # Create and draw the depth text, now in centimeters
+            # depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
+            # self.draw_labeled_text_box(
+            #     img=depth_colormap,
+            #     text_lines=depth_text_lines,
+            #     box=(x1, y1, x2, y2),  # Pass the whole box here too
+            #     text_color=(255, 255, 255),
+            #     font_scale=0.5
+            # )
 
-            #     # Draw the text on the colorized depth image (using white color)
-            #     cv2.putText(depth_colormap, depth_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
-            #     # --- End of New Block ---
+            
+            # # Update the logger to show the NEW intuitive coordinates
+            # self.get_logger().info(f"Ball position (intuitive cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
 
-            #     # Draw the mask outline for visualization
-            #     cv2.polylines(img, [best_ball['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
-            #     self.get_logger().info(f"Ball position (base_link): {text} | Depth: {depth_m:.2f} m")
-            # except Exception as e:
-            #     self.get_logger().warn(f"TF transform failed: {e}")
+            # if self.USE_BASE_FRAME:
+            # # GET X, Y, and Z from the base
+            #     try:
+            #         pt_base = self.tf_buffer.transform(pt_cam, 'base_link', timeout=rclpy.duration.Duration(seconds=1.0))
+            #         px, py, pz = pt_base.point.x, pt_base.point.y, pt_base.point.z
+
+            #         # Text for the base_link coordinates
+            #         text = f"({px:.2f}, {py:.2f}, {pz:.2f}) m"
+            #         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            #         cv2.putText(img, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
+
+            #         # --- ADD THIS to show camera coordinates ---
+            #         # Create text for the camera's perspective
+            #         text_cam = f"Cam: ({X:.2f}, {Y:.2f}, {Z:.2f}) m"
+            #         # Display it slightly below the first text in a different color (cyan)
+            #         cv2.putText(img, text_cam, (x1, y1 + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+            #         # --- End of new code ---
+
+            #         # --- Draw Depth Value on Depth Window ---
+            #         # Create the text string with the depth in millimeters
+            #         depth_text = f"Depth: {depth_mm:.0f} mm"
+
+            #         # Draw the text on the colorized depth image (using white color)
+            #         cv2.putText(depth_colormap, depth_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            #         # --- End of New Block ---
+
+            #         # Draw the mask outline for visualization
+            #         cv2.polylines(img, [best_ball['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
+            #         self.get_logger().info(f"Ball position (base_link): {text} | Depth: {depth_m:.2f} m")
+            #     except Exception as e:
+            #         self.get_logger().warn(f"TF transform failed: {e}")
 
         cv2.imshow("YOLO Ball Detection", img)
         # Display the colorized depth image in a new window
