@@ -18,6 +18,21 @@ ros2 topic info /camera/color/image_raw/compressed
 ros2 topic echo "topic_end_point" (get actual data)
 ros2 topic echo /camera/color/image_raw/compressed
 
+CONFIRMED OBJECT (confidence level):
+'sports ball' (50-70%)
+'banana' (80-90%)
+'apple' (70-90%)
+'orange' (70-90%, yolo puts strawberry and lemon as orange)
+'backpack'
+'bottle'
+'cup'
+'laptop'
+'mouse' (LOW, confused with cell phone)
+'remote'
+'keyboard' (70%)
+'cell phone' (80-90%)
+'book' (LOW)
+
 
 """
 import rclpy
@@ -32,7 +47,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import message_filters
 
-class HeadCameraBallDetector(Node):
+class HeadCameraObjDetector(Node):
     def __init__(self):
         super().__init__('head_camera_ball_detector')
         self.USE_BASE_FRAME = False
@@ -40,16 +55,30 @@ class HeadCameraBallDetector(Node):
         # CONFIGURABLE: Easily change this to detect different objects!
         # Popular options: 'person', 'cup', 'bottle', 'book', 'laptop', 'cell phone', 'remote'
         # 'chair', 'couch', 'tv', 'bowl', 'banana', 'apple', 'orange', 'sports ball'
-        self.TARGET_OBJECTS = ['sports ball']  # <-- CHANGE THIS LINE to try different objects
+        self.TARGET_OBJECTS = ['sports ball', 'banana', 'apple', 'orange', 'backpack', 'bottle', 'cup', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'book']  # <-- CHANGE THIS LINE to try different objects
 
-        # Create resizable windows
+        # The original dimensions of your camera image
+        original_w = 240
+        original_h = 424
+
+        # 1. Define your desired window width
+        window_width = 500
+
+        # 2. Calculate the corresponding height to maintain the aspect ratio
+        window_height = int(original_h * (window_width / original_w))  # Result is 543
+
+        # 3. Create and size the window with the calculated dimensions
         cv2.namedWindow("YOLO Object Detection", cv2.WINDOW_NORMAL)
-        cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("YOLO Object Detection", window_width, window_height)
+
+        # You can do the same for the depth camera window if you uncomment it
+        # cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
+        # cv2.resizeWindow("Depth Camera", window_width, window_height)
 
         self.bridge = CvBridge()
         
         # APPLIED CHANGE: Using the segmentation model for more precise detection
-        self.model = YOLO('yolov8n-seg.pt')
+        self.model = YOLO('yolo11s-seg.pt')
 
         if self.USE_BASE_FRAME:
             self.tf_buffer = tf2_ros.Buffer()
@@ -189,10 +218,27 @@ class HeadCameraBallDetector(Node):
                 valid_depths = depth_crop[mask_crop == 255]
                 valid_depths = valid_depths[valid_depths > 0] # Filter out zero-depth values
 
-                if len(valid_depths) == 0:
-                    self.get_logger().warn("Detected ball has no valid depth data within its mask.")
-                    return # Skip this frame
+
+
+                # Calculate the total number of pixels in the object's mask
+                total_mask_pixels = cv2.countNonZero(mask_crop)
+
+                # Avoid division by zero if the mask is empty for some reason
+                if total_mask_pixels == 0:
+                    return
+
+                # Calculate the percentage of valid pixels
+                valid_pixel_percentage = len(valid_depths) / total_mask_pixels
                 
+                # Set your desired threshold (e.g., 5% = 0.05)
+                MIN_VALID_PERCENTAGE = 0.05 
+
+                if valid_pixel_percentage < MIN_VALID_PERCENTAGE:
+                    # self.get_logger().info(f"Skipping: Only {valid_pixel_percentage:.2%} valid depth.")
+                    return # Exit the function early
+                
+
+
                 # Calculate the median depth
                 depth_mm = np.median(valid_depths)
                 depth_m = depth_mm / 1000.0
@@ -266,7 +312,7 @@ class HeadCameraBallDetector(Node):
                     f"Z (fwd):   {z_intuitive * 100:.1f} cm"
                 ]
                 self.draw_labeled_text_box(img, text_lines, (x1, y1, x2, y2), text_color=(0, 255, 0))
-                self.get_logger().info(f"{object_name} (cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
+                # self.get_logger().info(f"{object_name} (cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
 
             # --- Draw the depth text (common to both modes) ---
             depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
@@ -333,10 +379,28 @@ class HeadCameraBallDetector(Node):
             #         self.get_logger().info(f"Ball position (base_link): {text} | Depth: {depth_m:.2f} m")
             #     except Exception as e:
             #         self.get_logger().warn(f"TF transform failed: {e}")
+        
 
-        cv2.imshow("YOLO Ball Detection", img)
-        # Display the colorized depth image in a new window
-        cv2.imshow("Depth Camera", depth_colormap)
+        # resize the image sizes
+        # Define your desired display width
+        display_width = 960 
+
+        # Get original image dimensions
+        h, w, _ = img.shape
+
+        # Calculate the new height to maintain aspect ratio
+        display_height = int(h * (display_width / w))
+
+        # Create the new dimensions tuple
+        new_dim = (display_width, display_height)
+
+        # Resize both images using the new dimensions and a high-quality filter
+        img_display = cv2.resize(img, new_dim, interpolation=cv2.INTER_LINEAR)
+        depth_display = cv2.resize(depth_colormap, new_dim, interpolation=cv2.INTER_LINEAR)
+
+        cv2.imshow("YOLO Object Detection", img_display)
+        # cv2.imshow("Depth Camera", depth_display)
+
         cv2.waitKey(1)
 
     def draw_labeled_text_box(self, img, text_lines, box, font_scale=0.5, font_thickness=2, text_color=(255, 0, 255)):
@@ -379,7 +443,7 @@ class HeadCameraBallDetector(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = HeadCameraBallDetector()
+    node = HeadCameraObjDetector()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

@@ -81,6 +81,10 @@ Improve resolution
 
 Improve Performance: To reduce lag, especially over Wi-Fi, research how to use compressed image topics (e.g., subscribing to /camera/color/image_raw/compressed) instead of the raw image stream.
 
+Min and Max object detection range
+Move Head Camera (min and max for each movements)
+Connect with LLM to answer the question (e.g. I'm hungry and please suggest what I can eat in the image -> suggest banana and lemon but recommend banana because the lemon can hurt the empty stomach)
+
 ## TERMS
 cx_k, cy_k - The Optical Center
 

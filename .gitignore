@@ -6,6 +6,7 @@ __pycache__/
 # PyTorch
 # Ignore models downloaded by the YOLO pip package
 yolov8*.pt
+yolov11*.pt
 
 # C extensions
 *.so
