@@ -1,9 +1,15 @@
 """
-Execute commands below to get camera streaming:
-ros2 launch stretch_core stretch_driver.launch.py
-ros2 launch stretch_core d435i_low_resolution.launch.py
+SETUP INSTRUCTIONS:
+1. First, run these commands in separate terminals to start the robot and camera:
+   Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+   Terminal 2: ros2 launch stretch_core d435i_low_resolution.launch.py
 
-USEFUL COMMANDS:
+2. Then run this script directly:
+   python3 head_camera_ball_detector.py
+
+3. To detect different objects, modify the TARGET_OBJECTS list in the __init__ method below.
+
+USEFUL DEBUGGING COMMANDS:
 ros2 topic list (show all topics)
 
 ros2 topic info "topic_end_point" (get topic metadata)
@@ -30,9 +36,14 @@ class HeadCameraBallDetector(Node):
     def __init__(self):
         super().__init__('head_camera_ball_detector')
         self.USE_BASE_FRAME = False
+        
+        # CONFIGURABLE: Easily change this to detect different objects!
+        # Popular options: 'person', 'cup', 'bottle', 'book', 'laptop', 'cell phone', 'remote'
+        # 'chair', 'couch', 'tv', 'bowl', 'banana', 'apple', 'orange', 'sports ball'
+        self.TARGET_OBJECTS = ['sports ball']  # <-- CHANGE THIS LINE to try different objects
 
         # Create resizable windows
-        cv2.namedWindow("YOLO Ball Detection", cv2.WINDOW_NORMAL)
+        cv2.namedWindow("YOLO Object Detection", cv2.WINDOW_NORMAL)
         cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
 
         self.bridge = CvBridge()
@@ -57,8 +68,17 @@ class HeadCameraBallDetector(Node):
             [self.sub_image, self.sub_depth], 10, 0.1)
         self.ts.registerCallback(self.image_depth_callback)
 
+        self.get_logger().info("Object detector node initialized and waiting for messages.")
+        self.get_logger().info(f"Currently detecting: {self.TARGET_OBJECTS}")
+        self.get_logger().info("To see all available object classes, check the logs after first detection.")
 
-        self.get_logger().info("Ball detector node initialized and waiting for messages.")
+    def print_available_classes(self):
+        """Print all available YOLO classes for easy reference"""
+        available_classes = list(self.model.names.values())
+        self.get_logger().info("Available YOLO object classes:")
+        for i, class_name in enumerate(available_classes):
+            if i % 10 == 0:  # Print 10 classes per line
+                self.get_logger().info(f"  {', '.join(available_classes[i:i+10])}")
 
     def info_callback(self, msg):
         self.get_logger().info("Original Camera Info Received.")
@@ -116,29 +136,39 @@ class HeadCameraBallDetector(Node):
         depth_colormap = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_JET)
 
         results = self.model(img, verbose=False)[0]
+        
+        # Print available classes on first run (for user reference)
+        if not hasattr(self, '_classes_printed'):
+            self.print_available_classes()
+            self._classes_printed = True
 
-        # APPLIED CHANGE: Logic to find the single "best" ball (largest on screen)
-        best_ball = None
+        # Logic to find the largest detected object
+        best_object = None
         largest_area = 0
 
         # The results from a segmentation model have a .masks attribute
         if results.masks is not None:
             for i, box in enumerate(results.boxes):
                 cls_name = results.names[int(box.cls[0])]
-                if cls_name == 'sports ball':
+                
+                # Check if this object is in our target list
+                if cls_name in self.TARGET_OBJECTS:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
+                    confidence = float(box.conf[0])
                     area = (x2 - x1) * (y2 - y1)
                     
                     if area > largest_area:
                         largest_area = area
-                        best_ball = {
+                        best_object = {
                             'box': (x1, y1, x2, y2),
-                            'mask': results.masks[i].xy[0] # Get the mask polygon
+                            'mask': results.masks[i].xy[0],
+                            'class': cls_name,
+                            'confidence': confidence
                         }
         
-        # APPLIED CHANGE: All processing is now done only on the best_ball, outside the loop
-        if best_ball is not None:
-            x1, y1, x2, y2 = best_ball['box']
+        # Process the largest detected object
+        if best_object is not None:
+            x1, y1, x2, y2 = best_object['box']
 
             # APPLIED CHANGE: Use the segmentation mask for a highly robust depth calculation
             try:
@@ -149,7 +179,7 @@ class HeadCameraBallDetector(Node):
                 mask_crop = np.zeros(depth_crop.shape, dtype=np.uint8)
 
                 # Get the mask polygon and shift its origin to the crop's top-left corner
-                polygon = best_ball['mask']
+                polygon = best_object['mask']
                 polygon_shifted = polygon - np.array([x1, y1])
 
                 # Draw the filled polygon on the blank mask
@@ -179,7 +209,7 @@ class HeadCameraBallDetector(Node):
             # center into a 3D coordinate (X, Y, Z) from the camera's perspective.
             # It's based on the geometry of similar triangles.
 
-            # The core formula is: X / depth_m = (cx - cx_k) / fx
+            # The core formula is: X (real world width) / Z (depth) = (cx - cx_k) / fx
             # - X: How far the object is to the left or right of the camera's center, in meters.
             # - depth_m: How far the object is straight ahead from the camera, in meters.
             # - (cx - cx_k): The horizontal distance in pixels from the optical center to the object's 2D center.
@@ -212,7 +242,7 @@ class HeadCameraBallDetector(Node):
             # Draw the bounding box
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
             # Draw the mask outline for visualization
-            cv2.polylines(img, [best_ball['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
+            cv2.polylines(img, [best_object['mask'].astype(np.int32)], isClosed=True, color=(0, 255, 255), thickness=2)
 
             if self.USE_BASE_FRAME:
                 # --- Get and Display Coordinates from the BASE ---
@@ -227,9 +257,16 @@ class HeadCameraBallDetector(Node):
                     self.get_logger().warn(f"TF transform to 'base_link' failed: {e}")
             else:
                 # --- Get and Display Coordinates from the CAMERA ---
-                text_lines = [f"X (right): {x_intuitive * 100:.1f} cm", f"Y (up):    {y_intuitive * 100:.1f} cm", f"Z (fwd):   {z_intuitive * 100:.1f} cm"]
+                object_name = best_object['class']
+                confidence = best_object['confidence']
+                text_lines = [
+                    f"{object_name} ({confidence:.2f})",
+                    f"X (right): {x_intuitive * 100:.1f} cm", 
+                    f"Y (up):    {y_intuitive * 100:.1f} cm", 
+                    f"Z (fwd):   {z_intuitive * 100:.1f} cm"
+                ]
                 self.draw_labeled_text_box(img, text_lines, (x1, y1, x2, y2), text_color=(0, 255, 0))
-                self.get_logger().info(f"Ball (cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
+                self.get_logger().info(f"{object_name} (cam): ({x_intuitive:.2f}, {y_intuitive:.2f}, {z_intuitive:.2f}) m | Depth: {depth_m:.2f} m")
 
             # --- Draw the depth text (common to both modes) ---
             depth_text_lines = [f"Depth: {depth_mm / 10.0:.1f} cm"]
