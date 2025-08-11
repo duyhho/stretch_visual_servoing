@@ -37,7 +37,7 @@ CONFIRMED OBJECT (confidence level):
 """
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo, CompressedImage
 from geometry_msgs.msg import PointStamped
 from cv_bridge import CvBridge
 from ultralytics import YOLO
@@ -57,15 +57,20 @@ class HeadCameraObjDetector(Node):
         # 'chair', 'couch', 'tv', 'bowl', 'banana', 'apple', 'orange', 'sports ball'
         self.TARGET_OBJECTS = ['sports ball', 'banana', 'apple', 'orange', 'backpack', 'bottle', 'cup', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'book']  # <-- CHANGE THIS LINE to try different objects
 
-        # The original dimensions of your camera image
-        original_w = 240
-        original_h = 424
+        # Native camera dimensions
+        CAMERA_NATIVE_HEIGHT = 424
+        CAMERA_NATIVE_WIDTH = 240
+
+        # ...
+        # The image is rotated 90 degrees, so the new effective dimensions are:
+        EFFECTIVE_WIDTH = CAMERA_NATIVE_HEIGHT # 424
+        EFFECTIVE_HEIGHT = CAMERA_NATIVE_WIDTH # 240
 
         # 1. Define your desired window width
         window_width = 500
 
         # 2. Calculate the corresponding height to maintain the aspect ratio
-        window_height = int(original_h * (window_width / original_w))  # Result is 543
+        window_height = int(EFFECTIVE_WIDTH * (window_width / EFFECTIVE_HEIGHT))  # Result is 543
 
         # 3. Create and size the window with the calculated dimensions
         cv2.namedWindow("YOLO Object Detection", cv2.WINDOW_NORMAL)
@@ -78,7 +83,7 @@ class HeadCameraObjDetector(Node):
         self.bridge = CvBridge()
         
         # APPLIED CHANGE: Using the segmentation model for more precise detection
-        self.model = YOLO('yolo11s-seg.pt')
+        self.model = YOLO('yolo11n-seg.pt')
 
         if self.USE_BASE_FRAME:
             self.tf_buffer = tf2_ros.Buffer()
@@ -87,7 +92,10 @@ class HeadCameraObjDetector(Node):
         self.camera_info = None
         self.info_sub = self.create_subscription(
             CameraInfo, '/camera/color/camera_info', self.info_callback, 10)
-        self.sub_image = message_filters.Subscriber(self, Image, '/camera/color/image_raw')
+        
+
+        # self.sub_image = message_filters.Subscriber(self, Image, '/camera/color/image_raw')
+        self.sub_image = message_filters.Subscriber(self, CompressedImage, '/camera/color/image_raw/compressed')
         self.sub_depth = message_filters.Subscriber(self, Image, '/camera/aligned_depth_to_color/image_raw')
         
         # TODO: HOW TO USE OTHER TOPICS LIKE COMPRESSED IMAGE 
@@ -152,7 +160,8 @@ class HeadCameraObjDetector(Node):
             self.get_logger().warn("Waiting for camera_info...")
             return
 
-        img = self.bridge.imgmsg_to_cv2(image_msg, 'bgr8')
+        # img = self.bridge.imgmsg_to_cv2(image_msg, 'bgr8')
+        img = self.bridge.compressed_imgmsg_to_cv2(image_msg, 'bgr8')
         depth_img = self.bridge.imgmsg_to_cv2(depth_msg, 'passthrough')
 
         # ROTATE IMAGE (orignally 90 degrees rotated counter clockwise)
@@ -164,7 +173,7 @@ class HeadCameraObjDetector(Node):
         # Apply a colormap to make it colorful and easier to see
         depth_colormap = cv2.applyColorMap(depth_normalized, cv2.COLORMAP_JET)
 
-        results = self.model(img, verbose=False)[0]
+        results = self.model(img, verbose=False, conf=0.6)[0]
         
         # Print available classes on first run (for user reference)
         if not hasattr(self, '_classes_printed'):
