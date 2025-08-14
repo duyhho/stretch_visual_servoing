@@ -20,7 +20,7 @@ ros2 topic echo /camera/color/image_raw/compressed
 
 CONFIRMED OBJECT (confidence level):
 'sports ball' (50-70%)
-'banana' (80-90%)
+'banana' (80-90%) - below depth 17 cm, miscalculating the depth
 'apple' (70-90%)
 'orange' (70-90%, yolo puts strawberry and lemon as orange)
 'backpack'
@@ -33,6 +33,21 @@ CONFIRMED OBJECT (confidence level):
 'cell phone' (80-90%)
 'book' (LOW)
 
+TODO:
+- Access and integrate wide camera functionality
+- Implement manual head camera control (tilt and rotate)
+- Develop scene scanning capability:
+  * Scan current scene and return detected objects with X, Y, Z coordinates
+  * Track current head rotation angle
+  * Rotate incrementally to capture different scenes (with slight overlap)
+  * Re-detect objects and calculate X, Y, Z based on original position
+  * Handle coordinate transformation for objects detected at different angles
+    (e.g., two objects at opposite positions with same depth may show +70cm and -70cm)
+
+ETC:
+- Object detection reliable range (confidence > 50%): 18 cm to 60 cm
+- Depth measurement fails or returns errors for objects closer than 18 cm
+- Consider using wide camera for broader field of view during scene scanning
 
 """
 import rclpy
@@ -176,9 +191,9 @@ class HeadCameraObjDetector(Node):
         results = self.model(img, verbose=False, conf=0.6)[0]
         
         # Print available classes on first run (for user reference)
-        if not hasattr(self, '_classes_printed'):
-            self.print_available_classes()
-            self._classes_printed = True
+        # if not hasattr(self, '_classes_printed'):
+        #     self.print_available_classes()
+        #     self._classes_printed = True
 
         # Logic to find the largest detected object
         best_object = None
@@ -205,6 +220,7 @@ class HeadCameraObjDetector(Node):
                         }
         
         # Process the largest detected object
+        # best_object = None
         if best_object is not None:
             x1, y1, x2, y2 = best_object['box']
 
@@ -227,30 +243,35 @@ class HeadCameraObjDetector(Node):
                 valid_depths = depth_crop[mask_crop == 255]
                 valid_depths = valid_depths[valid_depths > 0] # Filter out zero-depth values
 
+                # DISABLED DUE TO DROPPING IMAGES
+                # # Calculate the total number of pixels in the object's mask
+                # total_mask_pixels = cv2.countNonZero(mask_crop)
 
+                # # Avoid division by zero if the mask is empty for some reason
+                # if totalsad_mask_pixels == 0:
+                #     return
 
-                # Calculate the total number of pixels in the object's mask
-                total_mask_pixels = cv2.countNonZero(mask_crop)
-
-                # Avoid division by zero if the mask is empty for some reason
-                if total_mask_pixels == 0:
-                    return
-
-                # Calculate the percentage of valid pixels
-                valid_pixel_percentage = len(valid_depths) / total_mask_pixels
+                # # Calculate the percentage of valid pixels
+                # valid_pixel_percentage = len(valid_depths) / total_mask_pixels
                 
-                # Set your desired threshold (e.g., 5% = 0.05)
-                MIN_VALID_PERCENTAGE = 0.05 
+                # # Set your desired threshold (e.g., 5% = 0.05)
+                # MIN_VALID_PERCENTAGE = 0.05 
 
-                if valid_pixel_percentage < MIN_VALID_PERCENTAGE:
-                    # self.get_logger().info(f"Skipping: Only {valid_pixel_percentage:.2%} valid depth.")
-                    return # Exit the function early
+                # if valid_pixel_percentage < MIN_VALID_PERCENTAGE:
+                #     # self.get_logger().info(f"Skipping: Only {valid_pixel_percentage:.2%} valid depth.")
+                #     return # Exit the function early
                 
 
 
                 # Calculate the median depth
                 depth_mm = np.median(valid_depths)
                 depth_m = depth_mm / 1000.0
+
+                if depth_m < 0.18:
+                    self.get_logger().info(f"CLOSE OBJECT DEBUG - {best_object['class']}:")
+                    self.get_logger().info(f"  Raw valid depths (mm): min={np.min(valid_depths)}, max={np.max(valid_depths)}, median={np.median(valid_depths)}")
+                    self.get_logger().info(f"  Depth range: {np.min(valid_depths)/1000:.3f}m - {np.max(valid_depths)/1000:.3f}m")
+                    self.get_logger().info(f"  Standard deviation: {np.std(valid_depths):.1f}mm")
 
             except Exception as e:
                 self.get_logger().error(f"Error in depth calculation: {e}")
@@ -269,7 +290,7 @@ class HeadCameraObjDetector(Node):
             # - depth_m: How far the object is straight ahead from the camera, in meters.
             # - (cx - cx_k): The horizontal distance in pixels from the optical center to the object's 2D center.
             # - fx: The camera's horizontal focal length in pixel units.
-            cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+            cx, cy = (x1 + x2) / 2, (y1 + y2) // 2
             fx, fy = self.camera_info.k[0], self.camera_info.k[4]
             cx_k, cy_k = self.camera_info.k[2], self.camera_info.k[5]
             X = (cx - cx_k) * depth_m / fx
