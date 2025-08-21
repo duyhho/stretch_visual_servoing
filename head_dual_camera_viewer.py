@@ -1,3 +1,16 @@
+"""
+SETUP INSTRUCTIONS:
+1. First, run these commands in separate terminals to start the robot and camera:
+   Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+   Terminal 2: ros2 launch stretch_core d435i_low_resolution.launch.py
+   Terminal 3: ros2 launch stretch_core navigation_camera.launch.py
+
+2. Then run this script directly:
+   python3 head_dual_camera_viewer.py
+
+"""
+
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CompressedImage
