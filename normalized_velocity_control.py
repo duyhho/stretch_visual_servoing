@@ -1,4 +1,3 @@
-
 import stretch_body.robot as rb
 from stretch_body.hello_utils import *
 from stretch_body.robot_params import RobotParams

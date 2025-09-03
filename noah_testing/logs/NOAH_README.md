@@ -5,7 +5,8 @@ stretch_robot_home.py
 ## BEFORE END
 stretch_robot_stow.py
 
-## Note: Fixing Camera Rotation
+## Note: Locate X,Y, and Z For An Object
+### Fixing Camera Rotation
 Problem: The head camera image was rotated 90 degrees.
 
 Attempted Fix: Tried to fix it with a custom launch file (start_corrected_camera.launch.py).
@@ -19,7 +20,7 @@ img = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
 depth_img = cv2.rotate(depth_img, cv2.ROTATE_90_CLOCKWISE)
 ```
 
-## Note: Reconfigure 3D Conversion
+### Reconfigure 3D Conversion
 Problem: X,Y, and Z is incorrect (Suspecting the head camera image was rotated 90 degrees)
 
 Solution: Corrected the camera info and flip the signs of X and Y to match a standard graph where +Y is up and +X is right.
@@ -69,21 +70,48 @@ y_intuitive = -Y
 z_intuitive = Z
 ```
 
-## IMPLEMENTED
-Add depth camera open cv window - completed, the depth value is pretty accurate.
-
-what small camera attached to the head camera does? - This smaller camera is an Arducam 1MP RGB camera with a wide-angle lens and global shutter. It is primarily useful when operating the robot remotely, as we will see in an upcoming Web Interface Demo tutorial.
-
 Understand the Coordinate System: The (x, y, z) values displayed on the ball are its position in meters. Investigate how these coordinates relate to the robot's movement. - I changed the code to make the head camera as the origin. These coordinates are relative to the robot's base_link (the center of the robot at the floor), not the camera. We know this because the script transforms the point to the base_link frame.The camera is lotated 90 degrees counter clockwise by default.
 
-## Future Improvement
-Improve resolution
+### Depth Camera Streaming
+completed, the depth value is pretty accurate.
 
-Improve Performance: To reduce lag, especially over Wi-Fi, research how to use compressed image topics (e.g., subscribing to /camera/color/image_raw/compressed) instead of the raw image stream.
+ref: head_camera_obj_detector.py
 
+## Note: Improve Performance
+
+To reduce lag, especially over Wi-Fi, research how to use compressed image topics (e.g., subscribing to /camera/color/image_raw/compressed) instead of the raw image stream.
+
+completed with subscribing /camera/color/image_raw/compressed
+
+ref: head_dual_camera_viewer.py
+
+## Note: Use Wide Angle Camera
+what small camera attached to the head camera does? - This smaller camera is an Arducam 1MP RGB camera with a wide-angle lens and global shutter. It is primarily useful when operating the robot remotely, as we will see in an upcoming Web Interface Demo tutorial.
+
+ref: nav_camera_test.py
+
+## Note: Move Head Camera (min and max for each movements)
+Head Pan Range (Radians): [-4.061981126321178, 1.7410681942502029]
+Head Tilt Range (Radinas): [-1.8469128686143121, 0.4893398713355195]
+
+ref: head_camera_testing.ipynb
+
+
+## Note: ETC
 Min and Max object detection range
-Move Head Camera (min and max for each movements)
+ETC:
+- Object detection reliable range (confidence > 50%): 18 cm to 60 cm
+- Depth measurement fails or returns errors for objects closer than 18 cm
+- Consider using wide camera for broader field of view during scene scanning
+
 Connect with LLM to answer the question (e.g. I'm hungry and please suggest what I can eat in the image -> suggest banana and lemon but recommend banana because the lemon can hurt the empty stomach)
+
+
+
+USE YOLO WITH WIDE CAMERA IF IT CAN DETECT THE OBJECT
+ONCE NOTICE THE OBJECT MOVE HEAD CAMERA TO ZERO IN
+
+
 
 ## TERMS
 cx_k, cy_k - The Optical Center

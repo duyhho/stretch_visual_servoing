@@ -3,9 +3,9 @@ SETUP INSTRUCTIONS:
 1. First, run these commands in separate terminals to start the robot and camera:
    Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
    Terminal 2: ros2 launch stretch_core d435i_low_resolution.launch.py
-
+    
 2. Then run this script directly:
-   python3 head_camera_ball_detector.py
+   python3 head_camera_obj_detector.py
 
 3. To detect different objects, modify the TARGET_OBJECTS list in the __init__ method below.
 

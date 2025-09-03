@@ -1,3 +1,13 @@
+"""
+SETUP INSTRUCTIONS:
+1. First, run these commands in separate terminals to start the robot and camera:
+   Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+   Terminal 2: ros2 launch stretch_core d435i_low_resolution.launch.py
+    
+2. Then run this script directly:
+   python3 head_camera_full_scan_test.py
+"""
+
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -30,7 +40,7 @@ class AsyncScanner(Node):
 
         # --- State Machine Setup ---
         self.pan_angles = [-4.0, -3.24, -2.48, -1.72, -0.96, -0.2, 0.56, 1.32]
-        self.tilt_angles = [0.44, -0.7, -1.84] # Top, middle, bottom
+        self.tilt_angles = [0.0] # Top, middle, bottom
         self.current_tilt_idx = 0
         self.current_pan_idx = 0
         
