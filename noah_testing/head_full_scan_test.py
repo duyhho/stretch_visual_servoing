@@ -22,6 +22,30 @@ import cv2
 import math
 import os
 import threading
+import math
+
+def compute_stops(min_angle, max_angle, fov_deg, overlap=0.2):
+    """Return a list of center angles (radians) that tile [min,max] with FOV and overlap."""
+    fov = math.radians(fov_deg)
+    step = math.radians(fov_deg * (1.0 - overlap))
+    centers = []
+    first = min_angle + 0.5 * fov
+    last  = max_angle - 0.5 * fov
+    if last < first:
+        # FOV is wider than the range; just center once
+        return [0.5 * (min_angle + max_angle)]
+    a = first
+    # march by step
+    while a <= last - 1e-9:
+        centers.append(a)
+        a += step
+    # ensure we end exactly at 'last' to cover the right edge
+    if not centers or centers[-1] < last - 1e-9:
+        centers.append(last)
+
+    # iterate from the positive radians
+    centers.reverse()
+    return centers
 
 class AsyncScanner(Node):
     def __init__(self):
@@ -39,10 +63,29 @@ class AsyncScanner(Node):
         self.get_logger().info(f"Saving images to '{self.output_dir}/' directory.")
 
         # --- State Machine Setup ---
-        self.pan_angles = [-4.0, -3.24, -2.48, -1.72, -0.96, -0.2, 0.56, 1.32]
+        # Camera FOVs (physical, not the rotated image's axes)
+        RGB_FOV_H_DEG = 42.0
+        RGB_FOV_V_DEG = 69.0
+
+        # Choose your overlap (experiment with 0.2 ~ 0.3 for reliable stitching/detection)
+        OVERLAP = 0.20
+
+        # Joint limits you measured / from specs
+        PAN_MIN  = -4.061981126321178
+        PAN_MAX  =  1.7410681942502029
+        TILT_MIN = -1.8469128686143121
+        TILT_MAX =  0.4893398713355195
+
+        # Compute stops
+        self.pan_angles  = compute_stops(PAN_MIN, PAN_MAX, RGB_FOV_H_DEG, overlap=OVERLAP)
         self.tilt_angles = [0.0] # Top, middle, bottom
         self.current_tilt_idx = 0
         self.current_pan_idx = 0
+
+        self.image_ct = 1
+
+        self.get_logger().info(f"Pan stops (deg): {[round(math.degrees(a),1) for a in self.pan_angles]}")
+        self.get_logger().info(f"Tilt stops (deg): {[round(math.degrees(a),1) for a in self.tilt_angles]}")
         
         self.get_logger().info("Waiting for Action Server...")
         self.action_client.wait_for_server()
@@ -106,11 +149,21 @@ class AsyncScanner(Node):
             # Save the image
             with self.lock:
                 if self.latest_image is not None:
-                    pan_deg = int(math.degrees(self.pan_angles[self.current_pan_idx]))
-                    tilt_deg = int(math.degrees(self.tilt_angles[self.current_tilt_idx]))
-                    filename = os.path.join(self.output_dir, f"scan_tilt_{tilt_deg}_pan_{pan_deg}.jpg")
+                    pan = self.pan_angles[self.current_pan_idx]
+                    tilt = self.tilt_angles[self.current_tilt_idx]
+                    pan_deg  = math.degrees(pan)
+                    tilt_deg = math.degrees(tilt)
+
+                    # zero-padded, lexicographically sortable name
+                    filename = os.path.join(
+                        self.output_dir,
+                        f"{self.image_ct:03d}_tilt_{tilt_deg:+06.1f}_pan_{pan_deg:+06.1f}.jpg"
+                    )
+                    
                     cv2.imwrite(filename, self.latest_image)
                     self.get_logger().info(f"Image saved to {filename}")
+
+                    self.image_ct += 1
                 else:
                     self.get_logger().warn("Latest image was None.")
             

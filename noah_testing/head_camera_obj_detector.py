@@ -50,6 +50,7 @@ ETC:
 - Consider using wide camera for broader field of view during scene scanning
 
 """
+import math
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo, CompressedImage
@@ -62,6 +63,13 @@ import tf2_ros
 import tf2_geometry_msgs
 import message_filters
 
+def fovs_from_caminfo(ci):
+    fx = ci.k[0]; fy = ci.k[4]
+    w  = ci.width; h  = ci.height
+    hfov = 2.0 * math.degrees(math.atan(w / (2.0 * fx)))
+    vfov = 2.0 * math.degrees(math.atan(h / (2.0 * fy)))
+    return hfov, vfov
+
 class HeadCameraObjDetector(Node):
     def __init__(self):
         super().__init__('head_camera_ball_detector')
@@ -69,7 +77,7 @@ class HeadCameraObjDetector(Node):
         
         # CONFIGURABLE: Easily change this to detect different objects!
         # Popular options: 'person', 'cup', 'bottle', 'book', 'laptop', 'cell phone', 'remote'
-        # 'chair', 'couch', 'tv', 'bowl', 'banana', 'apple', 'orange', 'sports ball'
+        # 'chair', 'couch', 'tv', 'bowl', 'banana', z'apple', 'orange', 'sports ball'
         self.TARGET_OBJECTS = ['sports ball', 'banana', 'apple', 'orange', 'backpack', 'bottle', 'cup', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'book']  # <-- CHANGE THIS LINE to try different objects
 
         # Native camera dimensions
@@ -92,8 +100,8 @@ class HeadCameraObjDetector(Node):
         cv2.resizeWindow("YOLO Object Detection", window_width, window_height)
 
         # You can do the same for the depth camera window if you uncomment it
-        # cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
-        # cv2.resizeWindow("Depth Camera", window_width, window_height)
+        cv2.namedWindow("Depth Camera", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Depth Camera", window_width, window_height)
 
         self.bridge = CvBridge()
         
@@ -429,7 +437,7 @@ class HeadCameraObjDetector(Node):
         depth_display = cv2.resize(depth_colormap, new_dim, interpolation=cv2.INTER_LINEAR)
 
         cv2.imshow("YOLO Object Detection", img_display)
-        # cv2.imshow("Depth Camera", depth_display)
+        cv2.imshow("Depth Camera", depth_display)
 
         cv2.waitKey(1)
 

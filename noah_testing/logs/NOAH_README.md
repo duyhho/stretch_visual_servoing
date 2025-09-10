@@ -96,6 +96,15 @@ Head Tilt Range (Radinas): [-1.8469128686143121, 0.4893398713355195]
 
 ref: head_camera_testing.ipynb
 
+## Note: VALIDATE FOV
+[INFO] [1757546125.596453171] [fov_all]:   - RGB (color): /camera/color/camera_info
+[INFO] [1757546125.596662036] [fov_all]:   - Aligned Depth: /camera/aligned_depth_to_color/camera_info
+[INFO] [1757546125.596868130] [fov_all]:   - Raw Depth: /camera/depth/camera_info
+[INFO] [1757546125.643821344] [fov_all]: [RGB (color)] size=424x240  HFOV=70.15°, VFOV=43.37°
+[INFO] [1757546125.644268063] [fov_all]: [Aligned Depth] size=424x240  HFOV=70.15°, VFOV=43.37°
+[INFO] [1757546125.644593290] [fov_all]: [Raw Depth] size=424x240  HFOV=89.34°, VFOV=58.46°
+
+ref: verify_fov_all.ipynb
 
 ## Note: ETC
 Min and Max object detection range
@@ -106,7 +115,9 @@ ETC:
 
 Connect with LLM to answer the question (e.g. I'm hungry and please suggest what I can eat in the image -> suggest banana and lemon but recommend banana because the lemon can hurt the empty stomach)
 
-
+D435if FOV
+Depth FOV of 87° x 58° 
+RGB FOV of 69° x 42° (≈ 1.204 rad * ≈ 0.733 rad)
 
 USE YOLO WITH WIDE CAMERA IF IT CAN DETECT THE OBJECT
 ONCE NOTICE THE OBJECT MOVE HEAD CAMERA TO ZERO IN
