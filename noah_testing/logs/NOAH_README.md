@@ -106,6 +106,12 @@ ref: head_camera_testing.ipynb
 
 ref: verify_fov_all.ipynb
 
+## Note: USE GRIPPER WITH TELE OPS
+1. Use the web teleop as a reference to move
+ref: https://docs.hello-robot.com/0.3/getting_started/demos_web_teleop/
+2. 
+
+
 ## Note: ETC
 Min and Max object detection range
 ETC:
@@ -139,3 +145,70 @@ msg.k[4] is fy
 msg.k[5] is cy_k
 
 ### CameraInfo.P - similar to CameraInfo.K with stream version
+
+
+
+### Camera Resolutions
+#### D435i (Head Camera)
+* It needs to be ROTATE_90_CLOCKWISE
+
+low resolution
+Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+Terminal 2: ros2 launch stretch_core d435i_low_resolution.launch.py
+ros2 topic echo /camera/color/image_raw --once
+
+height: 240
+width: 424
+
+high resolution
+Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+Terminal 2: ros2 launch stretch_core d435i_high_resolution.launch.py
+ros2 topic echo /camera/color/image_raw --once
+
+height: 720
+width: 1280
+
+#### D405 (Gripper Camera)
+Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+Terminal 2: ros2 launch stretch_core d405_basic.launch.py
+ros2 topic echo /gripper_camera/color/image_rect_raw --once
+
+height: 480
+width: 848
+
+Directly talk to the RealSense SDK (pyrealsense2)
+#width, height, fps = 1280, 720, 5
+#width, height, fps = 848, 480, 10
+#width, height, fps = 640, 480, 30
+
+#### Nav
+* It needs to be ROTATE_90_COUNTERCLOCKWISE
+
+Terminal 1: ros2 launch stretch_core stretch_driver.launch.py
+Terminal 2: ros2 launch stretch_core navigation_camera.launch.py
+ros2 topic echo /camera/color/image_raw --once
+
+height: 600
+width: 800
+
+### Motion Range Limitations
+print(robot.end_of_arm.get_joint('wrist_yaw').soft_motion_limits['hard']) # (lower bound in radians, upper bound in radians)
+print(robot.end_of_arm.get_joint('wrist_pitch').soft_motion_limits['hard'])
+print(robot.end_of_arm.get_joint('wrist_roll').soft_motion_limits['hard'])
+print(robot.lift.soft_motion_limits['hard'])
+print(robot.arm.soft_motion_limits['hard'])
+print(robot.head.get_joint('head_pan').soft_motion_limits['hard']) # (lower bound in radians, upper bound in radians)
+print(robot.head.get_joint('head_tilt').soft_motion_limits['hard'])
+
+[-1.2469985488187025, 4.5003161364595]
+[-1.5707963267948966, 0.45099035163837853]
+[-2.9114955354069467, 2.9176314585584895]
+[0.0, 1.097266661190618]
+[0.0, 0.52]
+[-4.061981126321178, 1.7410681942502029]
+[-1.8469128686143121, 0.4893398713355195]
+
+* "collision" and "user" are not defined
+** "current" is the aggregate of the previous three limits into the final limits enforced by the software. 
+
+
